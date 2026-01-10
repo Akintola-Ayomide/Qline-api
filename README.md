@@ -1,14 +1,16 @@
 # Qline Backend
 
 ## 🚀 Features
-
-- **Framework**: Built with [NestJS](https://nestjs.com/) for scalable server-side applications.
-- **Database**: [PostgreSQL](https://www.postgresql.org/) integration using [TypeORM](https://typeorm.io/).
 - **Authentication**:
   - **Local Auth**: Email and password login with bcrypt hashing.
   - **Social Auth**: Google OAuth 2.0 integration.
   - **JWT**: Secure session management using JSON Web Tokens.
 - **Configuration**: Centralized environment configuration using `@nestjs/config`.
+- **Validation**: Request data validation using `class-validator`.
+
+##  Tech Stack
+- **Framework**: Built with [NestJS](https://nestjs.com/) for scalable server-side applications.
+- **Database**: [PostgreSQL](https://www.postgresql.org/) integration using [TypeORM](https://typeorm.io/).
 - **Validation**: Request data validation using `class-validator`.
 
 ## 🛠️ Prerequisites
@@ -93,15 +95,3 @@ src/
 ├── app.module.ts   # Main application module
 └── main.ts         # Application entry point
 ```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is [UNLICENSED](LICENSE).
