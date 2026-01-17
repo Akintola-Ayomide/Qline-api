@@ -1,17 +1,20 @@
 # Qline Backend
 
 ## 🚀 Features
-- **Authentication**:
+- **Secure Authentication**:
+  - **HttpOnly Cookies**: All authentication tokens (JWT) are stored securely in HttpOnly, SameSite=Lax cookies to prevent XSS attacks.
   - **Local Auth**: Email and password login with bcrypt hashing.
-  - **Social Auth**: Google OAuth 2.0 integration.
-  - **JWT**: Secure session management using JSON Web Tokens.
+  - **Social Auth**: Google OAuth 2.0 integration with secure callback handling.
+  - **Session Management**: Dual-strategy JWT extraction (Cookie or Bearer Header).
+- **Security**:
+  - **CORS**: Configured to safely accept credentials from the frontend.
+  - **Validation**: Request data validation using `class-validator`.
 - **Configuration**: Centralized environment configuration using `@nestjs/config`.
-- **Validation**: Request data validation using `class-validator`.
 
 ##  Tech Stack
-- **Framework**: Built with [NestJS](https://nestjs.com/) for scalable server-side applications.
+- **Framework**: [NestJS](https://nestjs.com/) for scalable server-side applications.
 - **Database**: [PostgreSQL](https://www.postgresql.org/) integration using [TypeORM](https://typeorm.io/).
-- **Validation**: Request data validation using `class-validator`.
+- **Middleware**: `cookie-parser` for handling secure cookies.
 
 ## 🛠️ Prerequisites
 
@@ -80,10 +83,11 @@ npm run start:prod
 | :--- | :--- | :--- | :--- |
 | `POST` | `/auth/register` | Register a new user | No |
 | `POST` | `/auth/login` | Login with email and password | No |
+| `POST` | `/auth/logout` | Logout (Clear secure cookies) | No |
 | `GET` | `/auth/google` | Initiate Google OAuth login | No |
 | `GET` | `/auth/google/callback` | Google OAuth callback URL | No |
-| `GET` | `/auth/profile` | Get current user profile | **Yes** (Bearer Token) |
-| `GET` | `/auth/me` | Alias for profile | **Yes** (Bearer Token) |
+| `GET` | `/auth/profile` | Get current user profile | **Yes** (Cookie/Bearer) |
+| `GET` | `/auth/me` | Alias for profile | **Yes** (Cookie/Bearer) |
 
 ## 📂 Project Structure
 
