@@ -69,6 +69,25 @@ export class AuthController {
       'FRONTEND_URL',
       'http://localhost:3000',
     );
+
+    // Check for state to determine redirect
+    if (req.query.state) {
+      try {
+        const state = JSON.parse(req.query.state as string);
+        if (state.redirectUri) {
+          // If it's a mobile deep link/scheme, append the token
+          // Mobile apps usually need the token in the URL since they can't easily sync the cookie jar from the system browser
+          if (state.redirectUri.startsWith('appfrontend://') || state.redirectUri.startsWith('exp://')) {
+            return res.redirect(`${state.redirectUri}?token=${result.accessToken}`);
+          }
+          // Use the provided redirect uri (could be different web path)
+          return res.redirect(`${state.redirectUri}`);
+        }
+      } catch (e) {
+        // failed to parse state, ignore
+      }
+    }
+
     res.redirect(`${frontendUrl}/auth/callback`);
   }
 
