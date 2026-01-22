@@ -4,10 +4,10 @@
 - **Secure Authentication**:
   - **HttpOnly Cookies**: All authentication tokens (JWT) are stored securely in HttpOnly, SameSite=Lax cookies to prevent XSS attacks.
   - **Local Auth**: Email and password login with bcrypt hashing.
-  - **Social Auth**: Google OAuth 2.0 integration with secure callback handling.
-  - **Session Management**: Dual-strategy JWT extraction (Cookie or Bearer Header).
+- **Social Auth**: Google OAuth 2.0 integration with secure callback handling. Supports **Dynamic Redirects** for mobile deep linking (e.g., `appfrontend://`).
+  - **Session Management**: Dual-strategy JWT extraction (Cookie for Web, Bearer Header for Mobile).
 - **Security**:
-  - **CORS**: Configured to safely accept credentials from the frontend.
+  - **CORS**: Configured to safely accept credentials from the frontend, dynamically reflecting the origin.
   - **Validation**: Request data validation using `class-validator`.
 - **Configuration**: Centralized environment configuration using `@nestjs/config`.
 
@@ -37,13 +37,15 @@ Ensure you have the following installed:
    ```
 
 3. **Environment Configuration**
-   Create a `.env` file in the root directory and add the following variables:
+   Create a `.env` file in the root directory. To support authentication on physical mobile devices, we use `nip.io` domains (wildcard DNS) instead of `localhost`.
 
+   **Example `.env`:**
    ```env
    # Server
    PORT=8000
    NODE_ENV=development
-   FRONTEND_URL=http://localhost:3000
+   # Replace 192.168.x.x with your local LAN IP
+   FRONTEND_URL=http://192.168.x.x.nip.io:3000
 
    # Database (PostgreSQL)
    DB_HOST=localhost
@@ -59,7 +61,8 @@ Ensure you have the following installed:
    # Google OAuth
    GOOGLE_CLIENT_ID=your_google_client_id
    GOOGLE_CLIENT_SECRET=your_google_client_secret
-   GOOGLE_CALLBACK_URL=http://localhost:8000/auth/google/callback
+   # Replace with your LAN IP. MUST be added to Google Cloud Console Authorized Redirect URIs
+   GOOGLE_CALLBACK_URL=http://192.168.x.x.nip.io:8000/auth/google/callback
    ```
 
 ## 🏃‍♂️ Running the Application
