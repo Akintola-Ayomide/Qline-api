@@ -4,11 +4,14 @@
 - **Secure Authentication**:
   - **HttpOnly Cookies**: All authentication tokens (JWT) are stored securely in HttpOnly, SameSite=Lax cookies to prevent XSS attacks.
   - **Local Auth**: Email and password login with bcrypt hashing.
+  - **Password Reset**: Secure forgot password flow with email-based token verification.
 - **Social Auth**: Google OAuth 2.0 integration with secure callback handling. Supports **Dynamic Redirects** for mobile deep linking (e.g., `appfrontend://`).
   - **Session Management**: Dual-strategy JWT extraction (Cookie for Web, Bearer Header for Mobile).
+- **Email Service**: Nodemailer integration for transactional emails (password reset, etc.).
 - **Security**:
   - **CORS**: Configured to safely accept credentials from the frontend, dynamically reflecting the origin.
   - **Validation**: Request data validation using `class-validator`.
+  - **Token Security**: Password reset tokens are hashed with bcrypt and expire after 1 hour.
 - **Configuration**: Centralized environment configuration using `@nestjs/config`.
 
 ##  Tech Stack
@@ -63,6 +66,13 @@ Ensure you have the following installed:
    GOOGLE_CLIENT_SECRET=your_google_client_secret
    # Replace with your LAN IP. MUST be added to Google Cloud Console Authorized Redirect URIs
    GOOGLE_CALLBACK_URL=http://192.168.x.x.nip.io:8000/auth/google/callback
+
+   # Email Configuration (for password reset)
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USER=your-email@gmail.com
+   SMTP_PASS=your-app-specific-password
+   EMAIL_FROM=noreply@qline.com
    ```
 
 ## 🏃‍♂️ Running the Application
@@ -87,6 +97,8 @@ npm run start:prod
 | `POST` | `/auth/register` | Register a new user | No |
 | `POST` | `/auth/login` | Login with email and password | No |
 | `POST` | `/auth/logout` | Logout (Clear secure cookies) | No |
+| `POST` | `/auth/forgot-password` | Request password reset email | No |
+| `POST` | `/auth/reset-password` | Reset password with token | No |
 | `GET` | `/auth/google` | Initiate Google OAuth login | No |
 | `GET` | `/auth/google/callback` | Google OAuth callback URL | No |
 | `GET` | `/auth/profile` | Get current user profile | **Yes** (Cookie/Bearer) |
@@ -97,6 +109,7 @@ npm run start:prod
 ```
 src/
 ├── auth/           # Authentication module (Strategies, Guards, Services)
+├── email/          # Email service module (Nodemailer)
 ├── database/       # Database configuration module
 ├── entities/       # TypeORM entities (User, etc.)
 ├── app.module.ts   # Main application module

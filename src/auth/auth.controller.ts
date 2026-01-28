@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto';
+import { RegisterDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
 import { LocalAuthGuard, JwtAuthGuard, GoogleAuthGuard } from './guards';
 
 @Controller('auth')
@@ -111,5 +111,18 @@ export class AuthController {
       path: '/'
     });
     return { message: 'Logged out successfully' };
+  }
+
+  @Post('forgot-password')
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.requestPasswordReset(forgotPasswordDto.email);
+  }
+
+  @Post('reset-password')
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(
+      resetPasswordDto.token,
+      resetPasswordDto.password,
+    );
   }
 }
