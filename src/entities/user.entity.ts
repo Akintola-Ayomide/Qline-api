@@ -22,23 +22,23 @@ export class User {
   @Column()
   name: string;
 
-  @Column({ nullable: true })
-  password: string;
+  @Column({ type: 'varchar', nullable: true })
+  password: string | null;
 
   @Column({ type: 'enum', enum: AuthProvider, default: AuthProvider.LOCAL })
   provider: AuthProvider;
 
-  @Column({ nullable: true })
-  googleId: string;
+  @Column({ type: 'varchar', nullable: true })
+  googleId: string | null;
 
-  @Column({ nullable: true })
-  avatar: string;
+  @Column({ type: 'varchar', nullable: true })
+  avatar: string | null;
 
-  @Column({ nullable: true })
-  resetPasswordToken: string;
+  @Column({ type: 'varchar', nullable: true })
+  resetPasswordToken: string | null;
 
-  @Column({ nullable: true })
-  resetPasswordExpires: Date;
+  @Column({ type: 'timestamp', nullable: true })
+  resetPasswordExpires: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

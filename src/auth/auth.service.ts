@@ -179,7 +179,7 @@ export class AuthService {
 
         // Check if token matches any user
         for (const user of users) {
-            const isValidToken = await bcrypt.compare(token, user.resetPasswordToken);
+            const isValidToken = await bcrypt.compare(token, user.resetPasswordToken!);
             if (isValidToken) {
                 return user;
             }

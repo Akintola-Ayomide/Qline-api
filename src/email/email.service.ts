@@ -28,70 +28,76 @@ export class EmailService {
         const mailOptions = {
             from: this.configService.get<string>('EMAIL_FROM', 'noreply@qline.com'),
             to: email,
-            subject: 'Password Reset Request - Qline',
+            subject: 'Reset your Qline password',
             html: `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Password Reset</title>
+          <title>Reset Your Password</title>
         </head>
-        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 32px;">
-              <span style="font-family: 'Georgia', serif; font-style: italic; font-weight: 800;">Q</span>line
-            </h1>
-          </div>
-          
-          <div style="background: #ffffff; padding: 40px 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <h2 style="color: #1e293b; margin-top: 0;">Password Reset Request</h2>
+        <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f3f4f6; margin: 0; padding: 0; -webkit-font-smoothing: antialiased;">
+          <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); overflow: hidden;">
             
-            <p style="color: #64748b; font-size: 16px;">
-              We received a request to reset your password for your Qline account. Click the button below to set a new password:
-            </p>
-            
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 30px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                Reset Password
+            <!-- Header with Logo -->
+            <div style="padding: 40px 0; text-align: center; border-bottom: 1px solid #f3f4f6;">
+              <a href="${frontendUrl}" style="text-decoration: none; display: inline-block; vertical-align: middle;">
+                <span style="font-family: serif; font-size: 48px; font-weight: 800; font-style: italic; color: #2563eb; background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; padding-right: 4px;">Q</span><span style="font-family: sans-serif; font-size: 32px; font-weight: 700; color: #0f172a; letter-spacing: -0.025em;">line</span>
               </a>
             </div>
-            
-            <p style="color: #64748b; font-size: 14px; margin-bottom: 10px;">
-              Or copy and paste this link into your browser:
-            </p>
-            <p style="color: #3b82f6; font-size: 14px; word-break: break-all;">
-              ${resetUrl}
-            </p>
-            
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-              <p style="color: #94a3b8; font-size: 13px; margin: 5px 0;">
-                This link will expire in <strong>1 hour</strong> for security reasons.
+
+            <!-- Content -->
+            <div style="padding: 40px 40px; color: #334155;">
+              <h1 style="margin: 0 0 24px; font-size: 24px; font-weight: 700; color: #0f172a; text-align: center;">Reset Your Password</h1>
+              
+              <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #475569; text-align: center;">
+                We received a request to reset the password for your Qline account. If you made this request, please click the button below to secure your account.
               </p>
-              <p style="color: #94a3b8; font-size: 13px; margin: 5px 0;">
-                If you didn't request a password reset, please ignore this email or contact support if you have concerns.
+              
+              <div style="text-align: center; margin: 32px 0;">
+                <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%); color: #ffffff; font-size: 16px; font-weight: 600; padding: 14px 32px; border-radius: 8px; text-decoration: none; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2); border: 1px solid rgba(0,0,0,0.05);">
+                  Reset Password
+                </a>
+              </div>
+              
+              <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #475569; text-align: center;">
+                For security, this link will expire in <strong>1 hour</strong>. If you didn't request a password reset, you can safely ignore this email.
+              </p>
+
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;">
+
+              <p style="margin: 0 0 12px; font-size: 14px; color: #64748b;">
+                If the button above doesn't work, copy and paste this link into your browser:
+              </p>
+              <p style="margin: 0; font-size: 13px; word-break: break-all; font-family: 'Menlo', 'Monaco', 'Courier New', monospace;">
+                <a href="${resetUrl}" style="color: #2563eb; text-decoration: underline;">${resetUrl}</a>
               </p>
             </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; color: #94a3b8; font-size: 12px;">
-            <p>&copy; ${new Date().getFullYear()} Qline, Inc. All rights reserved.</p>
+
+            <!-- Footer -->
+            <div style="padding: 24px; background-color: #f8fafc; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="margin: 0; font-size: 13px; color: #94a3b8;">
+                &copy; ${new Date().getFullYear()} Qline. All rights reserved.
+              </p>
+            </div>
           </div>
         </body>
         </html>
       `,
             text: `
-        Password Reset Request - Qline
+        Reset your Qline password
         
-        We received a request to reset your password. Click the link below to reset your password:
+        We received a request to reset the password for your Qline account.
         
+        Click the link below to reset your password:
         ${resetUrl}
         
         This link will expire in 1 hour.
         
-        If you didn't request a password reset, please ignore this email.
+        If you didn't request a password reset, you can safely ignore this email.
         
-        © ${new Date().getFullYear()} Qline, Inc.
+        © ${new Date().getFullYear()} Qline
       `,
         };
 
