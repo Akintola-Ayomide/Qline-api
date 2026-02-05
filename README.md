@@ -7,6 +7,13 @@
   - **Password Reset**: Secure forgot password flow with email-based token verification.
 - **Social Auth**: Google OAuth 2.0 integration with secure callback handling. Supports **Dynamic Redirects** for mobile deep linking (e.g., `appfrontend://`).
   - **Session Management**: Dual-strategy JWT extraction (Cookie for Web, Bearer Header for Mobile).
+- **Queue Management**:
+  - **Real-time Queues**: Create and manage virtual queues with custom capacity and service times.
+  - **Secure Joining**: Users can join queues with automatic duplicate prevention and capacity checks.
+  - **Position Tracking**: Real-time position updates and estimated wait time calculations.
+  - **QR Verification**: Secure QR code system for verified check-ins.
+  - **Owner Controls**: Owners can prioritize users (reorder) and manage their queues.
+  - **Anti-Spam Limits**: Built-in limits on queue creation (3/day) and active joins (2/user).
 - **Email Service**: Nodemailer integration for transactional emails (password reset, etc.).
 - **Security**:
   - **CORS**: Configured to safely accept credentials from the frontend, dynamically reflecting the origin.
@@ -101,8 +108,20 @@ npm run start:prod
 | `POST` | `/auth/reset-password` | Reset password with token | No |
 | `GET` | `/auth/google` | Initiate Google OAuth login | No |
 | `GET` | `/auth/google/callback` | Google OAuth callback URL | No |
-| `GET` | `/auth/profile` | Get current user profile | **Yes** (Cookie/Bearer) |
-| `GET` | `/auth/me` | Alias for profile | **Yes** (Cookie/Bearer) |
+| `GET` | `/auth/profile` | Get current user profile | **Yes** |
+| `GET` | `/auth/me` | Alias for profile | **Yes** |
+
+### Queue Management (`/queues`)
+
+| Method | Endpoint | Description | Protected |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/queues` | Create a new queue | **Yes** |
+| `GET` | `/queues/my` | Get all queues owned by me | **Yes** |
+| `GET` | `/queues/:id` | Get details of a specific queue | **Yes** |
+| `POST` | `/queues/join` | Join a queue | **Yes** |
+| `GET` | `/queues/:id/status` | Get user's position and wait time | **Yes** |
+| `POST` | `/queues/verify-qr` | (Owner) Verify entry via QR token | **Yes** |
+| `PATCH` | `/queues/:id/prioritize` | (Owner) Reorder user in queue | **Yes** |
 
 ## 📂 Project Structure
 
@@ -111,7 +130,8 @@ src/
 ├── auth/           # Authentication module (Strategies, Guards, Services)
 ├── email/          # Email service module (Nodemailer)
 ├── database/       # Database configuration module
-├── entities/       # TypeORM entities (User, etc.)
+├── entities/       # TypeORM entities (User, Queue, QueueEntry)
+├── queue/          # Queue logic (Controller, Service, DTOs)
 ├── app.module.ts   # Main application module
 └── main.ts         # Application entry point
 ```
