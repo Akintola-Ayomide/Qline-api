@@ -16,7 +16,7 @@ import {
     Patch,
 } from '@nestjs/common';
 import { QueueService } from './queue.service';
-import { CreateQueueDto, JoinQueueDto, PrioritizeUserDto } from './dto/queue.dto';
+import { CreateQueueDto, JoinQueueDto, PrioritizeUserDto, UpdateQueueStatusDto } from './dto/queue.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 /**
@@ -59,9 +59,19 @@ export class QueueController {
      * @param req - The Express request (contains `req.user` from JWT).
      * @returns An array of queues owned by the user.
      */
+    @Get('active')
+    async getAllActiveQueues() {
+        return this.queueService.getAllActiveQueues();
+    }
+
     @Get('my')
     async getMyQueues(@Req() req) {
         return this.queueService.getMyQueues(req.user);
+    }
+
+    @Get('joined')
+    async getJoinedQueues(@Req() req) {
+        return this.queueService.getJoinedQueues(req.user);
     }
 
     /**
@@ -133,5 +143,35 @@ export class QueueController {
         @Body() dto: PrioritizeUserDto,
     ) {
         return this.queueService.prioritizeUser(req.user.id, queueId, dto);
+    }
+
+    @Get(':id/participants')
+    async getQueueParticipants(
+        @Req() req,
+        @Param('id', ParseIntPipe) queueId: number,
+    ) {
+        return this.queueService.getQueueParticipants(queueId, req.user.id);
+    }
+
+    @Post(':id/serve-next')
+    async serveNext(
+        @Req() req,
+        @Param('id', ParseIntPipe) queueId: number,
+    ) {
+        return this.queueService.serveNextUser(queueId, req.user.id);
+    }
+
+    @Patch(':id/status')
+    async updateQueueStatus(
+        @Req() req,
+        @Param('id', ParseIntPipe) queueId: number,
+        @Body() dto: UpdateQueueStatusDto,
+    ) {
+        return this.queueService.updateQueueStatus(req.user.id, queueId, dto.status);
+    }
+
+    @Post(':id/leave')
+    async leaveQueue(@Req() req, @Param('id', ParseIntPipe) queueId: number) {
+        return this.queueService.leaveQueue(req.user, queueId);
     }
 }

@@ -4,7 +4,16 @@
  * Validated via `class-validator` decorators before reaching the service layer.
  */
 
-import { IsString, IsOptional, IsInt, Min, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, Max, IsArray, IsEnum } from 'class-validator';
+import { QueueStatus } from '../../entities/queue.entity';
+
+/**
+ * DTO for the `PATCH /queues/:id/status` endpoint — updates queue status.
+ */
+export class UpdateQueueStatusDto {
+    @IsEnum(QueueStatus)
+    status: QueueStatus;
+}
 
 /**
  * DTO for the `POST /queues` endpoint — creates a new queue.
@@ -28,6 +37,7 @@ export class CreateQueueDto {
      */
     @IsInt()
     @Min(1)
+    @Max(1000)
     @IsOptional()
     maxParticipants?: number;
 

@@ -19,6 +19,9 @@ import { AuthService } from './auth.service';
 import { RegisterDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
 import { LocalAuthGuard, JwtAuthGuard, GoogleAuthGuard } from './guards';
 
+/** Default frontend URL used for redirects during local development only. */
+const DEV_FRONTEND_URL = 'http://localhost:3000';
+
 /**
  * Shared cookie options for the JWT token cookie.
  * Extracted as a constant to avoid duplication across endpoints.
@@ -129,10 +132,14 @@ export class AuthController {
     // Set the JWT token as an HTTP-only cookie.
     res.cookie('token', result.accessToken, TOKEN_COOKIE_OPTIONS);
 
-    const frontendUrl = this.configService.get<string>(
-      'FRONTEND_URL',
-      'http://localhost:3000',
-    );
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    if (!frontendUrl) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('FRONTEND_URL is not defined in environment variables');
+      }
+      console.warn('FRONTEND_URL not set, falling back to dev default');
+    }
+    const resolvedFrontendUrl = frontendUrl || DEV_FRONTEND_URL;
 
     // Check if the OAuth state contains a custom redirect URI.
     if (req.query.state) {
@@ -160,7 +167,7 @@ export class AuthController {
     }
 
     // Default redirect to the web frontend's auth callback page.
-    res.redirect(`${frontendUrl}/auth/callback`);
+    res.redirect(`${resolvedFrontendUrl}/auth/callback`);
   }
 
   /**

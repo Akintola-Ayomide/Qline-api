@@ -56,11 +56,15 @@ export class EmailService {
     email: string,
     resetToken: string,
   ): Promise<void> {
-    const frontendUrl = this.configService.get<string>(
-      'FRONTEND_URL',
-      'http://localhost:3000',
-    );
-    const resetUrl = `${frontendUrl}/auth/reset-password?token=${resetToken}`;
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    if (!frontendUrl) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('FRONTEND_URL is not defined in environment variables');
+      }
+      console.warn('FRONTEND_URL not set, falling back to http://localhost:3000');
+    }
+    const resolvedUrl = frontendUrl || 'http://localhost:3000';
+    const resetUrl = `${resolvedUrl}/auth/reset-password?token=${resetToken}`;
 
     const mailOptions: nodemailer.SendMailOptions = {
       from: this.configService.get<string>(
@@ -69,7 +73,7 @@ export class EmailService {
       ),
       to: email,
       subject: 'Reset your Qline password',
-      html: this.buildPasswordResetHtml(frontendUrl, resetUrl),
+      html: this.buildPasswordResetHtml(resolvedUrl, resetUrl),
       text: this.buildPasswordResetText(resetUrl),
     };
 

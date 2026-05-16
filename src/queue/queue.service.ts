@@ -125,12 +125,73 @@ export class QueueService {
 
     /**
      * Retrieves all queues owned by the authenticated user.
+     * Contains active and total counts.
      *
      * @param user - The authenticated user.
      * @returns An array of {@link Queue} entities owned by the user.
      */
-    async getMyQueues(user: User): Promise<Queue[]> {
-        return this.queueRepository.find({ where: { ownerId: user.id } });
+    async getMyQueues(user: User): Promise<any[]> {
+        const queues = await this.queueRepository.find({ where: { ownerId: user.id } });
+        return Promise.all(queues.map(async q => {
+            const active = await this.queueEntryRepository.count({
+                where: { queueId: q.id, status: QueueEntryStatus.WAITING }
+            });
+
+            // Total today calculation
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const total = await this.queueEntryRepository.count({
+                where: {
+                    queueId: q.id,
+                    createdAt: MoreThan(today)
+                }
+            });
+
+            return {
+                ...q,
+                activeParticipants: active,
+                totalToday: total
+            };
+        }));
+    }
+
+    /**
+     * Retrieves all active queues in the system for browsing.
+     */
+    async getAllActiveQueues(): Promise<any[]> {
+        const queues = await this.queueRepository.find({
+            where: { status: QueueStatus.ACTIVE },
+            relations: ['owner'],
+        });
+
+        // Get waiting counts for each queue
+        return Promise.all(queues.map(async q => {
+            const inLine = await this.queueEntryRepository.count({
+                where: { queueId: q.id, status: QueueEntryStatus.WAITING }
+            });
+            return {
+                ...q,
+                inLine,
+                waitTime: inLine * q.avgServiceTime
+            };
+        }));
+    }
+
+    /**
+     * Retrieves all queues the user is currently joined in.
+     */
+    async getJoinedQueues(user: User): Promise<any[]> {
+        const entries = await this.queueEntryRepository.find({
+            where: { userId: user.id, status: QueueEntryStatus.WAITING },
+            relations: ['queue', 'queue.owner'],
+            order: { joinedAt: 'DESC' }
+        });
+
+        return entries.map(e => ({
+            entry: e,
+            queue: e.queue
+        }));
     }
 
     /**
@@ -471,6 +532,92 @@ export class QueueService {
         });
     }
 
+    /**
+     * Retrieves all waiting participants in a queue for manage screen.
+     */
+    async getQueueParticipants(queueId: number, ownerId: number): Promise<QueueEntry[]> {
+        const queue = await this.queueRepository.findOne({ where: { id: queueId } });
+        if (!queue || queue.ownerId !== ownerId) {
+            throw new ForbiddenException('Not owner');
+        }
+
+        return this.queueEntryRepository.find({
+            where: { queueId, status: QueueEntryStatus.WAITING },
+            relations: ['user'],
+            order: { position: 'ASC' }
+        });
+    }
+
+    /**
+     * Completes service for the next user in line (the one with the lowest position).
+     */
+    async serveNextUser(queueId: number, ownerId: number): Promise<QueueEntry> {
+        return this.dataSource.transaction(async (manager) => {
+            const queue = await manager.findOne(Queue, { where: { id: queueId } });
+            if (!queue || queue.ownerId !== ownerId) {
+                throw new ForbiddenException('Not owner');
+            }
+
+            const nextEntry = await manager.findOne(QueueEntry, {
+                where: { queueId, status: QueueEntryStatus.WAITING },
+                order: { position: 'ASC' },
+            });
+
+            if (!nextEntry) {
+                throw new NotFoundException('Queue is empty');
+            }
+
+            nextEntry.status = QueueEntryStatus.COMPLETED;
+            nextEntry.completedAt = new Date();
+
+            return manager.save(nextEntry);
+        });
+    }
+
+    /**
+     * Updates the status of a queue (owner-only).
+     */
+    async updateQueueStatus(ownerId: number, queueId: number, status: QueueStatus): Promise<Queue> {
+        const queue = await this.queueRepository.findOne({ where: { id: queueId } });
+        if (!queue || queue.ownerId !== ownerId) {
+            throw new ForbiddenException('Not owner');
+        }
+
+        queue.status = status;
+        return this.queueRepository.save(queue);
+    }
+
+    /**
+     * Allows a user to leave a queue they've joined.
+     */
+    async leaveQueue(user: User, queueId: number): Promise<void> {
+        return this.dataSource.transaction(async (manager) => {
+            const entry = await manager.findOne(QueueEntry, {
+                where: { queueId, userId: user.id, status: QueueEntryStatus.WAITING },
+            });
+
+            if (!entry) {
+                throw new NotFoundException('You are not in this queue');
+            }
+
+            const oldPosition = entry.position;
+            
+            // Shift remaining participants up
+            await manager
+                .createQueryBuilder()
+                .update(QueueEntry)
+                .set({ position: () => 'position - 1' })
+                .where('queueId = :queueId', { queueId })
+                .andWhere('status = :status', { status: QueueEntryStatus.WAITING })
+                .andWhere('position > :oldPos', { oldPos: oldPosition })
+                .execute();
+
+            // Mark as cancelled
+            entry.status = QueueEntryStatus.CANCELLED;
+            await manager.save(entry);
+        });
+    }
+
     // ──────────────────────────────────────────────
     // Private Helpers
     // ──────────────────────────────────────────────
@@ -499,7 +646,10 @@ export class QueueService {
      * @returns The hex-encoded HMAC signature.
      */
     private computeHmacSignature(payload: string): string {
-        const secret = this.configService.get<string>('JWT_SECRET') || 'secret';
+        const secret = this.configService.get<string>('JWT_SECRET');
+        if (!secret) {
+            throw new Error('JWT_SECRET is not defined in environment variables');
+        }
         return crypto
             .createHmac('sha256', secret)
             .update(payload)
