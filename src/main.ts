@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
+import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 
 /**
  * Bootstraps and starts the NestJS application.
@@ -44,6 +45,9 @@ async function bootstrap(): Promise<void> {
       whitelist: true,
     }),
   );
+
+  // Apply global exception filter
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   // Start the server on the configured port (default: 8000).
   const port = configService.get<number>('PORT', 8000);

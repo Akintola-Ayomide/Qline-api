@@ -16,7 +16,7 @@ import {
     Patch,
 } from '@nestjs/common';
 import { QueueService } from './queue.service';
-import { CreateQueueDto, JoinQueueDto, PrioritizeUserDto, UpdateQueueStatusDto } from './dto/queue.dto';
+import { CreateQueueDto, JoinQueueDto, PrioritizeUserDto, UpdateQueueStatusDto, VerifyQrDto } from './dto/queue.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 /**
@@ -124,8 +124,8 @@ export class QueueController {
      * @returns The queue entry associated with the token.
      */
     @Post('verify-qr')
-    async verifyQr(@Req() req, @Body('token') token: string) {
-        return this.queueService.verifyQrCode(token, req.user.id);
+    async verifyQr(@Req() req, @Body() verifyQrDto: VerifyQrDto) {
+        return this.queueService.verifyQrCode(verifyQrDto.token, req.user.id);
     }
 
     /**

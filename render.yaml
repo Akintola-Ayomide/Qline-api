@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: qline-api
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:prod

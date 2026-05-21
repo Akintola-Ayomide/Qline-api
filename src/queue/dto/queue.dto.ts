@@ -34,10 +34,11 @@ export class CreateQueueDto {
     /**
      * Maximum number of participants allowed in the queue.
      * Must be at least 1. Defaults to 50 if not specified.
+     * Hard limited to 50 max users per queue.
      */
     @IsInt()
     @Min(1)
-    @Max(1000)
+    @Max(50)
     @IsOptional()
     maxParticipants?: number;
 
@@ -91,4 +92,13 @@ export class PrioritizeUserDto {
     /** The new position to assign to the user. */
     @IsInt()
     newPosition: number;
+}
+
+/**
+ * DTO for the `POST /queues/verify-qr` endpoint.
+ */
+export class VerifyQrDto {
+    /** The QR code token scanned by the owner. */
+    @IsString()
+    token: string;
 }

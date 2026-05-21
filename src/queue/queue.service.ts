@@ -247,7 +247,11 @@ export class QueueService {
 
         return this.dataSource.transaction(async (manager) => {
             // Step 1: Validate the queue exists and is currently active.
-            const queue = await manager.findOne(Queue, { where: { id: queueId } });
+            // Using a pessimistic write lock to prevent race conditions during join operations.
+            const queue = await manager.findOne(Queue, { 
+                where: { id: queueId },
+                lock: { mode: 'pessimistic_write' },
+            });
 
             if (!queue) {
                 throw new NotFoundException('Queue not found');
@@ -288,7 +292,8 @@ export class QueueService {
                 where: { queueId, status: QueueEntryStatus.WAITING },
             });
 
-            if (currentParticipants >= (queue.maxParticipants || 50)) {
+            const maxCapacity = Math.min(queue.maxParticipants || 50, 50);
+            if (currentParticipants >= maxCapacity) {
                 throw new BadRequestException('Queue is full.');
             }
 
