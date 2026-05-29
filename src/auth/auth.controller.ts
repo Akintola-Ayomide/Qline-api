@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { RegisterDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
+import { RegisterDto, GuestRegisterDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
 import { LocalAuthGuard, JwtAuthGuard, GoogleAuthGuard } from './guards';
 
 /** Default frontend URL used for redirects during local development only. */
@@ -72,6 +72,24 @@ export class AuthController {
     const result = await this.authService.register(registerDto);
 
     // Set the JWT token as an HTTP-only cookie for secure, automatic auth on future requests.
+    res.cookie('token', result.accessToken, TOKEN_COOKIE_OPTIONS);
+
+    return result;
+  }
+
+  /**
+   * Registers a new guest user.
+   *
+   * On success, sets an HTTP-only JWT cookie and returns the user data + access token.
+   *
+   * @param guestRegisterDto - The validated guest registration data from the request body.
+   * @param res              - The Express response object (used to set the cookie).
+   * @returns The auth response containing user data and the access token.
+   */
+  @Post('guest')
+  async guest(@Body() guestRegisterDto: GuestRegisterDto, @Res({ passthrough: true }) res) {
+    const result = await this.authService.registerGuest(guestRegisterDto);
+
     res.cookie('token', result.accessToken, TOKEN_COOKIE_OPTIONS);
 
     return result;

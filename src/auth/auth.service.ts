@@ -16,7 +16,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { User, AuthProvider } from '../entities/user.entity';
-import { RegisterDto } from './dto';
+import { RegisterDto, GuestRegisterDto } from './dto';
 import { EmailService } from '../email/email.service';
 
 /**
@@ -118,6 +118,30 @@ export class AuthService {
 
         // Generate and return JWT tokens for the newly registered user.
         return this.generateAuthResponse(user);
+    }
+
+    /**
+     * Registers a new guest user with a display name.
+     *
+     * @param registerDto - The guest registration data (name, optional phone).
+     * @returns An AuthResponse with the guest user object and access token.
+     */
+    async registerGuest(registerDto: GuestRegisterDto): Promise<AuthResponse> {
+        const { name } = registerDto;
+        const uuid = crypto.randomUUID();
+        // Generate a unique email placeholder since email is unique and required in the DB schema
+        const email = `guest_${uuid}@qline.guest`;
+
+        const user = this.userRepository.create({
+            email,
+            name,
+            password: null,
+            provider: AuthProvider.GUEST,
+        });
+
+        const savedUser = await this.userRepository.save(user);
+
+        return this.generateAuthResponse(savedUser);
     }
 
     /**

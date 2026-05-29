@@ -37,7 +37,6 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
  * | PATCH  | `/queues/:id/prioritize` | Move a user to a new position (owner)|
  */
 @Controller('queues')
-@UseGuards(JwtAuthGuard)
 export class QueueController {
     constructor(private readonly queueService: QueueService) { }
 
@@ -49,15 +48,13 @@ export class QueueController {
      * @returns The newly created queue entity.
      */
     @Post()
+    @UseGuards(JwtAuthGuard)
     async createQueue(@Req() req, @Body() createQueueDto: CreateQueueDto) {
         return this.queueService.createQueue(req.user, createQueueDto);
     }
 
     /**
-     * Retrieves all queues owned by the authenticated user.
-     *
-     * @param req - The Express request (contains `req.user` from JWT).
-     * @returns An array of queues owned by the user.
+     * Retrieves all active queues in the system (public browse).
      */
     @Get('active')
     async getAllActiveQueues() {
@@ -65,11 +62,13 @@ export class QueueController {
     }
 
     @Get('my')
+    @UseGuards(JwtAuthGuard)
     async getMyQueues(@Req() req) {
         return this.queueService.getMyQueues(req.user);
     }
 
     @Get('joined')
+    @UseGuards(JwtAuthGuard)
     async getJoinedQueues(@Req() req) {
         return this.queueService.getJoinedQueues(req.user);
     }
@@ -93,6 +92,7 @@ export class QueueController {
      * @returns The created entry, QR code token, and estimated wait time.
      */
     @Post('join')
+    @UseGuards(JwtAuthGuard)
     async joinQueue(@Req() req, @Body() joinQueueDto: JoinQueueDto) {
         return this.queueService.joinQueue(req.user, joinQueueDto);
     }
@@ -105,6 +105,7 @@ export class QueueController {
      * @returns Position, people ahead, estimated wait time, or "not_joined".
      */
     @Get(':id/status')
+    @UseGuards(JwtAuthGuard)
     async getQueueStatus(@Req() req, @Param('id', ParseIntPipe) id: number) {
         return this.queueService.getQueueStatus(req.user, id);
     }
@@ -124,6 +125,7 @@ export class QueueController {
      * @returns The queue entry associated with the token.
      */
     @Post('verify-qr')
+    @UseGuards(JwtAuthGuard)
     async verifyQr(@Req() req, @Body() verifyQrDto: VerifyQrDto) {
         return this.queueService.verifyQrCode(verifyQrDto.token, req.user.id);
     }
@@ -137,6 +139,7 @@ export class QueueController {
      * @returns The updated queue entry with the new position.
      */
     @Patch(':id/prioritize')
+    @UseGuards(JwtAuthGuard)
     async prioritizeUser(
         @Req() req,
         @Param('id', ParseIntPipe) queueId: number,
@@ -146,6 +149,7 @@ export class QueueController {
     }
 
     @Get(':id/participants')
+    @UseGuards(JwtAuthGuard)
     async getQueueParticipants(
         @Req() req,
         @Param('id', ParseIntPipe) queueId: number,
@@ -154,6 +158,7 @@ export class QueueController {
     }
 
     @Post(':id/serve-next')
+    @UseGuards(JwtAuthGuard)
     async serveNext(
         @Req() req,
         @Param('id', ParseIntPipe) queueId: number,
@@ -162,6 +167,7 @@ export class QueueController {
     }
 
     @Patch(':id/status')
+    @UseGuards(JwtAuthGuard)
     async updateQueueStatus(
         @Req() req,
         @Param('id', ParseIntPipe) queueId: number,
@@ -171,6 +177,7 @@ export class QueueController {
     }
 
     @Post(':id/leave')
+    @UseGuards(JwtAuthGuard)
     async leaveQueue(@Req() req, @Param('id', ParseIntPipe) queueId: number) {
         return this.queueService.leaveQueue(req.user, queueId);
     }

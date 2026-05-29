@@ -20,6 +20,7 @@ import { CreateQueueDto, JoinQueueDto, PrioritizeUserDto } from './dto/queue.dto
 import { User } from '../entities/user.entity';
 import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
+import { QueueGateway } from './queue.gateway';
 
 /** Maximum number of queues a user can create per day. */
 const MAX_QUEUES_PER_DAY = 3;
@@ -76,6 +77,7 @@ export class QueueService {
         private readonly queueEntryRepository: Repository<QueueEntry>,
         private readonly dataSource: DataSource,
         private readonly configService: ConfigService,
+        private readonly queueGateway: QueueGateway,
     ) { }
 
     // ──────────────────────────────────────────────
@@ -324,11 +326,14 @@ export class QueueService {
             // Everyone currently waiting is ahead of the new joiner.
             const estimatedWaitTime = currentParticipants * queue.avgServiceTime;
 
-            return {
-                entry: savedEntry,
-                qrCode: qrCodeToken,
-                estimatedWaitTime,
-            };
+            const result = {
+                  entry: savedEntry,
+                  qrCode: qrCodeToken,
+                  estimatedWaitTime,
+              };
+              // Emit event for new participant
+              this.queueGateway.server.to(`queue_${queue.id}`).emit('userJoined', result.entry);
+              return result;
         });
     }
 
@@ -506,29 +511,31 @@ export class QueueService {
             if (newPosition < oldPosition) {
                 // Moving UP: shift entries between newPosition and oldPosition down (+1).
                 await manager
-                    .createQueryBuilder()
-                    .update(QueueEntry)
-                    .set({ position: () => 'position + 1' })
-                    .where('queueId = :queueId', { queueId })
-                    .andWhere('status = :status', {
-                        status: QueueEntryStatus.WAITING,
-                    })
-                    .andWhere('position >= :newPos', { newPos: newPosition })
-                    .andWhere('position < :oldPos', { oldPos: oldPosition })
-                    .execute();
+                     .createQueryBuilder()
+                     .update(QueueEntry)
+                     .set({ position: () => 'position + 1' })
+                     .where('queueId = :queueId', { queueId })
+                     .andWhere('status = :status', {
+                         status: QueueEntryStatus.WAITING,
+                     })
+                     .andWhere('position >= :newPos', { newPos: newPosition })
+                     .andWhere('position < :oldPos', { oldPos: oldPosition })
+                     .execute();
+              this.queueGateway.server.to(`queue_${queueId}`).emit('userPrioritized', { userId: dto.userId, newPosition });
             } else {
                 // Moving DOWN: shift entries between oldPosition and newPosition up (-1).
                 await manager
-                    .createQueryBuilder()
-                    .update(QueueEntry)
-                    .set({ position: () => 'position - 1' })
-                    .where('queueId = :queueId', { queueId })
-                    .andWhere('status = :status', {
-                        status: QueueEntryStatus.WAITING,
-                    })
-                    .andWhere('position > :oldPos', { oldPos: oldPosition })
-                    .andWhere('position <= :newPos', { newPos: newPosition })
-                    .execute();
+                     .createQueryBuilder()
+                     .update(QueueEntry)
+                     .set({ position: () => 'position - 1' })
+                     .where('queueId = :queueId', { queueId })
+                     .andWhere('status = :status', {
+                         status: QueueEntryStatus.WAITING,
+                     })
+                     .andWhere('position > :oldPos', { oldPos: oldPosition })
+                     .andWhere('position <= :newPos', { newPos: newPosition })
+                     .execute();
+              this.queueGateway.server.to(`queue_${queueId}`).emit('userPrioritized', { userId: dto.userId, newPosition });
             }
 
             // Update the target entry's position.
@@ -575,7 +582,17 @@ export class QueueService {
             nextEntry.status = QueueEntryStatus.COMPLETED;
             nextEntry.completedAt = new Date();
 
-            return manager.save(nextEntry);
+            // Shift remaining waiting participants up (decrement position)
+            await manager
+                .createQueryBuilder()
+                .update(QueueEntry)
+                .set({ position: () => 'position - 1' })
+                .where('queueId = :queueId', { queueId })
+                .andWhere('status = :status', { status: QueueEntryStatus.WAITING })
+                .andWhere('position > :servedPos', { servedPos: nextEntry.position })
+                .execute();
+
+            // Emit event for served participant\r\n              this.queueGateway.server.to(`queue_${queueId}`).emit('nextServed', nextEntry);\r\n              // Emit updated queue positions after shift\r\n              this.queueGateway.server.to(`queue_${queueId}`).emit('queueShifted');\r\n              return manager.save(nextEntry);
         });
     }
 
@@ -619,7 +636,7 @@ export class QueueService {
 
             // Mark as cancelled
             entry.status = QueueEntryStatus.CANCELLED;
-            await manager.save(entry);
+            // Emit event for user leaving\r\n              this.queueGateway.server.to(`queue_${queueId}`).emit('userLeft', entry);\r\n              await manager.save(entry);
         });
     }
 
