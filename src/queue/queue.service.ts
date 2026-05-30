@@ -564,36 +564,43 @@ export class QueueService {
      * Completes service for the next user in line (the one with the lowest position).
      */
     async serveNextUser(queueId: number, ownerId: number): Promise<QueueEntry> {
-        return this.dataSource.transaction<QueueEntry>(async (manager) => {
-            const queue = await manager.findOne(Queue, { where: { id: queueId } });
-            if (!queue || queue.ownerId !== ownerId) {
-                throw new ForbiddenException('Not owner');
-            }
+        return this.dataSource.transaction(async (manager): Promise<QueueEntry> => {
+    const queue = await manager.findOne(Queue, { where: { id: queueId } });
+    if (!queue || queue.ownerId !== ownerId) {
+        throw new ForbiddenException('Not owner');
+    }
 
-            const nextEntry = await manager.findOne(QueueEntry, {
-                where: { queueId, status: QueueEntryStatus.WAITING },
-                order: { position: 'ASC' },
-            });
+    const nextEntry = await manager.findOne(QueueEntry, {
+        where: { queueId, status: QueueEntryStatus.WAITING },
+        order: { position: 'ASC' },
+    });
 
-            if (!nextEntry) {
-                throw new NotFoundException('Queue is empty');
-            }
+    if (!nextEntry) {
+        throw new NotFoundException('Queue is empty');
+    }
 
-            nextEntry.status = QueueEntryStatus.COMPLETED;
-            nextEntry.completedAt = new Date();
+    nextEntry.status = QueueEntryStatus.COMPLETED;
+    nextEntry.completedAt = new Date();
 
-            // Shift remaining waiting participants up (decrement position)
-            await manager
-                .createQueryBuilder()
-                .update(QueueEntry)
-                .set({ position: () => 'position - 1' })
-                .where('queueId = :queueId', { queueId })
-                .andWhere('status = :status', { status: QueueEntryStatus.WAITING })
-                .andWhere('position > :servedPos', { servedPos: nextEntry.position })
-                .execute();
+    // Shift remaining waiting participants up (decrement position)
+    await manager
+        .createQueryBuilder()
+        .update(QueueEntry)
+        .set({ position: () => 'position - 1' })
+        .where('queueId = :queueId', { queueId })
+        .andWhere('status = :status', { status: QueueEntryStatus.WAITING })
+        .andWhere('position > :servedPos', { servedPos: nextEntry.position })
+        .execute();
 
-            // Emit event for served participant\r\n              this.queueGateway.server.to(`queue_${queueId}`).emit('nextServed', nextEntry);\r\n              // Emit updated queue positions after shift\r\n              this.queueGateway.server.to(`queue_${queueId}`).emit('queueShifted');\r\n              return manager.save(nextEntry);
-        });
+    // Emit event for served participant
+    this.queueGateway.server.to(`queue_${queueId}`).emit('nextServed', nextEntry);
+    // Emit updated queue positions after shift
+    this.queueGateway.server
+        .to(`queue_${queueId}`)
+        .emit('queueShifted');
+
+    return await manager.save(nextEntry);
+});
     }
 
     /**
