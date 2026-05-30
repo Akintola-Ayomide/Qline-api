@@ -564,7 +564,7 @@ export class QueueService {
      * Completes service for the next user in line (the one with the lowest position).
      */
     async serveNextUser(queueId: number, ownerId: number): Promise<QueueEntry> {
-        return this.dataSource.transaction(async (manager) => {
+        return this.dataSource.transaction<QueueEntry>(async (manager) => {
             const queue = await manager.findOne(Queue, { where: { id: queueId } });
             if (!queue || queue.ownerId !== ownerId) {
                 throw new ForbiddenException('Not owner');
