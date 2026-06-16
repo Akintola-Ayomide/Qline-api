@@ -26,11 +26,18 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
-  // Enable CORS — reflects the request origin so all origins are allowed.
-  // `credentials: true` ensures cookies are included in cross-origin requests.
+  // Enable CORS — allows the frontend to make credentialed cross-origin requests.
+  // In production, only the configured FRONTEND_URL is allowed as an origin.
+  // `credentials: true` is required for cookies; `allowedHeaders` must include
+  // 'Authorization' so the Bearer token strategy works cross-domain.
+  const frontendUrl = configService.get<string>('FRONTEND_URL');
   app.enableCors({
-    origin: true,
+    origin: frontendUrl
+      ? [frontendUrl, 'http://localhost:3000']
+      : true,
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
   // Register cookie-parser so we can read JWT tokens stored in HTTP-only cookies.

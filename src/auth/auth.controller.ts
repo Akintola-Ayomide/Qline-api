@@ -132,14 +132,20 @@ export class AuthController {
   /**
    * Handles the callback from Google OAuth after the user grants consent.
    *
-   * Sets the JWT cookie and redirects the user to the appropriate frontend URL.
-   * Supports three redirect scenarios:
-   * 1. **Mobile deep link** — If `state.redirectUri` starts with `appfrontend://` or `exp://`,
-   *    the token is appended as a query parameter (mobile apps can't share cookies with the browser).
-   * 2. **Custom web redirect** — If a `redirectUri` is provided in state, redirects there.
-   * 3. **Default** — Redirects to `FRONTEND_URL/auth/callback`.
+   * Sets both an HttpOnly cookie (for same-domain / dev scenarios) AND appends
+   * the JWT as a `?token=` query parameter in the redirect URL.
    *
-   * @param req - The Express request (contains `req.user` and `req.query.state`).
+   * Why the query param?
+   * In production, the backend and frontend are often on different domains
+   * (e.g. api.example.com vs app.example.com). The HttpOnly cookie is scoped
+   * to the backend domain and is therefore invisible to the frontend. Passing
+   * the token in the URL lets the frontend JavaScript read it, store it in
+   * localStorage, and use it as a Bearer token on subsequent API calls.
+   *
+   * The frontend callback page immediately removes the token from the URL
+   * (via history.replaceState) so it is not stored in the browser history.
+   *
+   * @param req - The Express request (contains `req.user` set by GoogleAuthGuard).
    * @param res - The Express response (used to set cookie and redirect).
    */
   @UseGuards(GoogleAuthGuard)
@@ -147,45 +153,40 @@ export class AuthController {
   async googleAuthCallback(@Req() req, @Res() res) {
     const result = await this.authService.googleLogin(req.user);
 
-    // Set the JWT token as an HTTP-only cookie.
+    // Set the JWT as an HttpOnly cookie — works for same-domain setups.
     res.cookie('token', result.accessToken, TOKEN_COOKIE_OPTIONS);
 
     const frontendUrl = this.configService.get<string>('FRONTEND_URL');
-    if (!frontendUrl) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('FRONTEND_URL is not defined in environment variables');
-      }
-      console.warn('FRONTEND_URL not set, falling back to dev default');
+    if (!frontendUrl && process.env.NODE_ENV === 'production') {
+      throw new Error('FRONTEND_URL is not defined in environment variables');
     }
     const resolvedFrontendUrl = frontendUrl || DEV_FRONTEND_URL;
 
-    // Check if the OAuth state contains a custom redirect URI.
+    // Handle mobile deep-link redirects from state param.
     if (req.query.state) {
       try {
         const state = JSON.parse(req.query.state as string);
-
         if (state.redirectUri) {
-          // Mobile apps (Expo/React Native) need the token in the URL
-          // because they can't share the browser's cookie jar.
           if (
             state.redirectUri.startsWith('appfrontend://') ||
             state.redirectUri.startsWith('exp://')
           ) {
-            return res.redirect(
-              `${state.redirectUri}?token=${result.accessToken}`,
-            );
+            // Mobile: pass token in URL (can't use cookies across apps).
+            return res.redirect(`${state.redirectUri}?token=${result.accessToken}`);
           }
-
-          // Web redirect: cookie is already set, just redirect.
-          return res.redirect(state.redirectUri);
+          // Custom web redirect: append token for cross-domain safety.
+          const url = new URL(state.redirectUri);
+          url.searchParams.set('token', result.accessToken);
+          return res.redirect(url.toString());
         }
       } catch {
-        // If state JSON parsing fails, fall through to the default redirect.
+        // State parse failed — fall through to default redirect.
       }
     }
 
-    // Default redirect to the web frontend's auth callback page.
-    res.redirect(`${resolvedFrontendUrl}/auth/callback`);
+    // Default: redirect to the frontend auth callback page WITH the token in the URL.
+    // The frontend JS will read it, store it, and then remove it from the URL.
+    res.redirect(`${resolvedFrontendUrl}/auth/callback?token=${result.accessToken}`);
   }
 
   /**
