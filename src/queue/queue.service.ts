@@ -605,6 +605,7 @@ export class QueueService {
 
     /**
      * Updates the status of a queue (owner-only).
+     * Emits 'queueStatusChanged' so connected clients can react.
      */
     async updateQueueStatus(ownerId: number, queueId: number, status: QueueStatus): Promise<Queue> {
         const queue = await this.queueRepository.findOne({ where: { id: queueId } });
@@ -613,11 +614,19 @@ export class QueueService {
         }
 
         queue.status = status;
-        return this.queueRepository.save(queue);
+        const saved = await this.queueRepository.save(queue);
+
+        // Notify all clients watching this queue room.
+        this.queueGateway.server
+            .to(`queue_${queueId}`)
+            .emit('queueStatusChanged', { queueId, status });
+
+        return saved;
     }
 
     /**
      * Allows a user to leave a queue they've joined.
+     * Shifts remaining participants up and broadcasts the change via WebSocket.
      */
     async leaveQueue(user: User, queueId: number): Promise<void> {
         return this.dataSource.transaction(async (manager) => {
@@ -630,8 +639,8 @@ export class QueueService {
             }
 
             const oldPosition = entry.position;
-            
-            // Shift remaining participants up
+
+            // Shift remaining participants up (decrement position by 1).
             await manager
                 .createQueryBuilder()
                 .update(QueueEntry)
@@ -641,10 +650,49 @@ export class QueueService {
                 .andWhere('position > :oldPos', { oldPos: oldPosition })
                 .execute();
 
-            // Mark as cancelled
+            // Mark entry as cancelled and persist.
             entry.status = QueueEntryStatus.CANCELLED;
-            // Emit event for user leaving\r\n              this.queueGateway.server.to(`queue_${queueId}`).emit('userLeft', entry);\r\n              await manager.save(entry);
+            await manager.save(entry);
+
+            // Notify all clients in the queue room.
+            this.queueGateway.server
+                .to(`queue_${queueId}`)
+                .emit('userLeft', { userId: user.id, queueId });
+
+            // Emit a general shift event so all watchers re-fetch positions.
+            this.queueGateway.server
+                .to(`queue_${queueId}`)
+                .emit('queueShifted');
         });
+    }
+
+    /**
+     * Deletes a queue and all its entries (owner-only).
+     * Broadcasts 'queueDeleted' so connected clients can navigate away.
+     *
+     * @param userId  - The ID of the user requesting the deletion.
+     * @param queueId - The ID of the queue to delete.
+     * @throws ForbiddenException if the caller is not the queue owner.
+     * @throws NotFoundException  if the queue does not exist.
+     */
+    async deleteQueue(userId: number, queueId: number): Promise<void> {
+        const queue = await this.queueRepository.findOne({ where: { id: queueId } });
+
+        if (!queue) {
+            throw new NotFoundException('Queue not found');
+        }
+        if (queue.ownerId !== userId) {
+            throw new ForbiddenException('Only the queue owner can delete this queue');
+        }
+
+        // Remove all entries first to avoid FK constraint issues.
+        await this.queueEntryRepository.delete({ queueId });
+        await this.queueRepository.remove(queue);
+
+        // Notify everyone watching this queue that it has been deleted.
+        this.queueGateway.server
+            .to(`queue_${queueId}`)
+            .emit('queueDeleted', { queueId });
     }
 
     // ──────────────────────────────────────────────

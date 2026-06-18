@@ -8,12 +8,15 @@ import {
     Controller,
     Post,
     Get,
+    Delete,
     Body,
     UseGuards,
     Req,
     Param,
     ParseIntPipe,
     Patch,
+    HttpCode,
+    HttpStatus,
 } from '@nestjs/common';
 import { QueueService } from './queue.service';
 import { CreateQueueDto, JoinQueueDto, PrioritizeUserDto, UpdateQueueStatusDto, VerifyQrDto } from './dto/queue.dto';
@@ -180,5 +183,18 @@ export class QueueController {
     @UseGuards(JwtAuthGuard)
     async leaveQueue(@Req() req, @Param('id', ParseIntPipe) queueId: number) {
         return this.queueService.leaveQueue(req.user, queueId);
+    }
+
+    /**
+     * Deletes a queue (owner only). Removes all entries and broadcasts 'queueDeleted'.
+     *
+     * @param req     - The Express request (contains `req.user` from JWT).
+     * @param queueId - The queue ID parsed from the URL parameter.
+     */
+    @Delete(':id')
+    @UseGuards(JwtAuthGuard)
+    @HttpCode(HttpStatus.NO_CONTENT)
+    async deleteQueue(@Req() req, @Param('id', ParseIntPipe) queueId: number) {
+        return this.queueService.deleteQueue(req.user.id, queueId);
     }
 }
