@@ -13,6 +13,11 @@ import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { join } from 'path';
+import dns from 'node:dns';
+
+// Force Node.js to prefer IPv4 DNS resolution. This prevents connection failures
+// (e.g., ENETUNREACH) on cloud hosting providers (like Render) that do not support IPv6.
+dns.setDefaultResultOrder('ipv4first');
 
 /**
  * Bootstraps and starts the NestJS application.
