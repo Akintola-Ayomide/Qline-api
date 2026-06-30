@@ -11,6 +11,7 @@ import { QueueGateway } from './queue.gateway';
 import { QueueController } from './queue.controller';
 import { Queue } from '../entities/queue.entity';
 import { QueueEntry } from '../entities/queue-entry.entity';
+import { EmailModule } from '../email/email.module';
 
 /**
  * Queue module.
@@ -22,6 +23,8 @@ import { QueueEntry } from '../entities/queue-entry.entity';
   imports: [
     // Register Queue and QueueEntry entities for @InjectRepository() usage.
     TypeOrmModule.forFeature([Queue, QueueEntry]),
+    // Provides EmailService for queue activity notifications.
+    EmailModule,
   ],
   providers: [QueueService, QueueGateway],
   controllers: [QueueController],

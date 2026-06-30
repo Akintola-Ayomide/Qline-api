@@ -9,6 +9,7 @@ import {
     ConflictException,
     UnauthorizedException,
     BadRequestException,
+    Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,7 +17,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { User, AuthProvider } from '../entities/user.entity';
-import { RegisterDto, GuestRegisterDto } from './dto';
+import { RegisterDto, GuestRegisterDto, VerifyEmailDto } from './dto';
 import { EmailService } from '../email/email.service';
 
 /**
@@ -55,6 +56,9 @@ const BCRYPT_SALT_ROUNDS = 10;
 /** Duration (in milliseconds) before a password-reset token expires. (1 hour) */
 const PASSWORD_RESET_EXPIRY_MS = 3_600_000;
 
+/** Duration (in milliseconds) before an email-verification OTP expires. (10 minutes) */
+const EMAIL_VERIFICATION_EXPIRY_MS = 10 * 60 * 1000;
+
 /**
  * Authentication service.
  *
@@ -67,6 +71,8 @@ const PASSWORD_RESET_EXPIRY_MS = 3_600_000;
  */
 @Injectable()
 export class AuthService {
+    private readonly logger = new Logger(AuthService.name);
+
     constructor(
         @InjectRepository(User)
         private readonly userRepository: Repository<User>,
@@ -78,45 +84,137 @@ export class AuthService {
     // Registration & Login
     // ──────────────────────────────────────────────
 
+    // ──────────────────────────────────────────────
+    // Email Verification (signup flow)
+    // ──────────────────────────────────────────────
+
     /**
-     * Registers a new user with email and password (local auth).
+     * Step 1 of the signup flow.
      *
-     * Steps:
-     * 1. Checks if the email is already taken.
-     * 2. Hashes the password with bcrypt.
-     * 3. Creates and saves the new user record.
-     * 4. Returns the signed JWT tokens.
+     * Generates a random 6-digit OTP, creates (or updates) an **unverified**
+     * user record, and sends the code to the given email address.
      *
-     * @param registerDto - The registration data (name, email, password).
+     * If a record already exists for this email:
+     * - If it's verified → throw ConflictException.
+     * - If it's unverified → overwrite the OTP so the user can retry/resend.
+     *
+     * @param email - The email address to send the verification code to.
+     * @returns A generic success message.
+     */
+    async sendVerificationCode(email: string): Promise<{ message: string }> {
+        const existingUser = await this.userRepository.findOne({ where: { email } });
+
+        if (existingUser && existingUser.isEmailVerified) {
+            throw new ConflictException('Email already registered');
+        }
+
+        // Generate a cryptographically random 6-digit numeric OTP.
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const hashedCode = await bcrypt.hash(code, BCRYPT_SALT_ROUNDS);
+        const expires = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MS);
+
+        if (existingUser) {
+            // Overwrite the OTP on an existing unverified record (resend scenario).
+            existingUser.emailVerificationCode = hashedCode;
+            existingUser.emailVerificationExpires = expires;
+            await this.userRepository.save(existingUser);
+        } else {
+            // Create a placeholder record; it will be completed in verifyAndRegister.
+            const user = this.userRepository.create({
+                email,
+                name: '',          // filled in during verifyAndRegister
+                password: null,
+                provider: AuthProvider.LOCAL,
+                isEmailVerified: false,
+                emailVerificationCode: hashedCode,
+                emailVerificationExpires: expires,
+            });
+            await this.userRepository.save(user);
+        }
+
+        // Send the OTP email. If this fails we still return success so the
+        // DB record is preserved and the user can resend. The error is logged
+        // so it surfaces in the server logs without crashing the request.
+        try {
+            await this.emailService.sendEmailVerificationCode(email, code);
+        } catch (err) {
+            this.logger.error(
+                `Failed to send verification email to ${email}: ${(err as Error).message}`,
+                (err as Error).stack,
+            );
+            // Do NOT rethrow — the user record is saved, let them retry via resend.
+        }
+
+        return { message: 'Verification code sent. Please check your inbox.' };
+    }
+
+    /**
+     * Step 2 of the signup flow.
+     *
+     * Validates the OTP, then completes the user record (name + password)
+     * and marks the account as verified. Returns a full AuthResponse so the
+     * frontend can log the user in immediately.
+     *
+     * @param dto - The verification DTO containing email, code, name, and password.
      * @returns An {@link AuthResponse} with the user object and access token.
-     * @throws ConflictException if the email is already registered.
+     * @throws BadRequestException if the code is invalid or expired.
+     */
+    async verifyAndRegister(dto: VerifyEmailDto): Promise<AuthResponse> {
+        const { email, code, name, password } = dto;
+
+        const user = await this.userRepository.findOne({ where: { email } });
+
+        if (
+            !user ||
+            !user.emailVerificationCode ||
+            !user.emailVerificationExpires
+        ) {
+            throw new BadRequestException('No pending verification found for this email. Please request a new code.');
+        }
+
+        if (user.emailVerificationExpires < new Date()) {
+            throw new BadRequestException('Verification code has expired. Please request a new one.');
+        }
+
+        const isCodeValid = await bcrypt.compare(code, user.emailVerificationCode);
+        if (!isCodeValid) {
+            throw new BadRequestException('Invalid verification code.');
+        }
+
+        // Code is valid — complete the user record.
+        user.name = name;
+        user.password = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+        user.isEmailVerified = true;
+        user.emailVerificationCode = null;
+        user.emailVerificationExpires = null;
+
+        await this.userRepository.save(user);
+
+        return this.generateAuthResponse(user);
+    }
+
+    /**
+     * @deprecated Use the two-step sendVerificationCode → verifyAndRegister flow instead.
+     * Kept for reference; no longer wired to any HTTP endpoint.
      */
     async register(registerDto: RegisterDto): Promise<AuthResponse> {
         const { email, password, name } = registerDto;
 
-        // Check if a user with this email already exists.
-        const existingUser = await this.userRepository.findOne({
-            where: { email },
-        });
-
+        const existingUser = await this.userRepository.findOne({ where: { email } });
         if (existingUser) {
             throw new ConflictException('Email already registered');
         }
 
-        // Hash the plain-text password before storing it.
         const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
-
-        // Create the user entity and persist it to the database.
         const user = this.userRepository.create({
             email,
             name,
             password: hashedPassword,
             provider: AuthProvider.LOCAL,
+            isEmailVerified: true,
         });
 
         await this.userRepository.save(user);
-
-        // Generate and return JWT tokens for the newly registered user.
         return this.generateAuthResponse(user);
     }
 
@@ -156,9 +254,23 @@ export class AuthService {
     async validateUser(email: string, password: string): Promise<User | null> {
         const user = await this.userRepository.findOne({ where: { email } });
 
-        // If no user found or user has no password (Google-only account), return null.
+        // If no user found or user has no password (Google-only / unfinished signup), fail.
         if (!user || !user.password) {
             return null;
+        }
+
+        // Local accounts must have their email verified before they can log in.
+        // Automatically trigger a new verification code send so they aren't stuck,
+        // and throw a specific error informing them.
+        if (user.provider === AuthProvider.LOCAL && !user.isEmailVerified) {
+            try {
+                await this.sendVerificationCode(email);
+            } catch (err) {
+                this.logger.error(`Failed to auto-resend verification code during login for ${email}: ${(err as Error).message}`);
+            }
+            throw new UnauthorizedException(
+                'Email not verified. A new verification code has been sent to your email. Please go to the sign up page to enter the code and complete your registration.',
+            );
         }
 
         // Compare the provided password with the stored bcrypt hash.
@@ -227,6 +339,7 @@ export class AuthService {
             googleId,
             avatar,
             provider: AuthProvider.GOOGLE,
+            isEmailVerified: true, // Google accounts are verified by definition
         });
 
         await this.userRepository.save(user);
@@ -264,6 +377,38 @@ export class AuthService {
         }
 
         // Destructure to remove the password hash from the response.
+        const { password, ...safeUser } = user;
+        return safeUser as User;
+    }
+
+    /**
+     * Updates a user's profile metadata (name, avatar), excluding the password.
+     *
+     * @param userId - The database ID of the user to update.
+     * @param dto - The update profile data transfer object.
+     * @returns The updated user entity without the `password` field.
+     * @throws UnauthorizedException if the user is not found.
+     */
+    async updateProfile(
+        userId: number,
+        dto: { name?: string; avatar?: string | null },
+    ): Promise<Omit<User, 'password'>> {
+        const user = await this.userRepository.findOne({ where: { id: userId } });
+
+        if (!user) {
+            throw new UnauthorizedException('User not found');
+        }
+
+        if (dto.name !== undefined) {
+            user.name = dto.name;
+        }
+
+        if (dto.avatar !== undefined) {
+            user.avatar = dto.avatar;
+        }
+
+        await this.userRepository.save(user);
+
         const { password, ...safeUser } = user;
         return safeUser as User;
     }
@@ -309,7 +454,15 @@ export class AuthService {
         await this.userRepository.save(user);
 
         // Send the un-hashed token to the user via email.
-        await this.emailService.sendPasswordResetEmail(email, resetToken);
+        try {
+            await this.emailService.sendPasswordResetEmail(email, resetToken);
+        } catch (err) {
+            this.logger.error(
+                `Failed to send password reset email to ${email}: ${(err as Error).message}`,
+                (err as Error).stack,
+            );
+            // Do NOT rethrow — token is saved in DB; user can retry the forgot-password request.
+        }
 
         return {
             message:

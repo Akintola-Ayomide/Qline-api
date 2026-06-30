@@ -11,7 +11,7 @@
  * login(@Req() req) { ... }
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
 /**
@@ -21,7 +21,28 @@ import { AuthGuard } from '@nestjs/passport';
  * 1. Reads `email` and `password` from the request body.
  * 2. Passes them to the {@link LocalStrategy} for validation.
  * 3. Attaches the authenticated user to `req.user` if credentials are valid.
- * 4. Rejects the request with a `401 Unauthorized` if credentials are invalid.
+ * 4. Rejects the request with the specific error from the strategy if invalid,
+ *    rather than Passport's generic 401 message.
  */
 @Injectable()
-export class LocalAuthGuard extends AuthGuard('local') { }
+export class LocalAuthGuard extends AuthGuard('local') {
+    /**
+     * Override handleRequest to preserve specific error messages thrown by
+     * LocalStrategy (e.g. "Email not verified") instead of Passport replacing
+     * them with a generic "Unauthorized" response.
+     */
+    handleRequest(err: any, user: any, info: any) {
+        // If the strategy threw a specific error, re-throw it as-is.
+        if (err) {
+            throw err;
+        }
+        // If no user was returned (null), throw with the strategy's info message
+        // or a generic fallback.
+        if (!user) {
+            const message =
+                info?.message || 'Invalid email or password';
+            throw new UnauthorizedException(message);
+        }
+        return user;
+    }
+}

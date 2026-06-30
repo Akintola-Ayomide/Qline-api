@@ -12,6 +12,7 @@ import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { QueueModule } from './queue/queue.module';
+import { UploadModule } from './upload/upload.module';
 
 /**
  * The root application module that ties together all feature modules.
@@ -21,6 +22,7 @@ import { QueueModule } from './queue/queue.module';
  * - **DatabaseModule** — Configures the TypeORM PostgreSQL database connection.
  * - **AuthModule** — Handles user registration, login, Google OAuth, and password reset.
  * - **QueueModule** — Manages queue creation, joining, status, and owner operations.
+ * - **UploadModule** — Manages image and file uploading.
  */
 @Module({
   imports: [
@@ -31,6 +33,7 @@ import { QueueModule } from './queue/queue.module';
     DatabaseModule,
     AuthModule,
     QueueModule,
+    UploadModule,
   ],
   controllers: [AppController],
   providers: [AppService],

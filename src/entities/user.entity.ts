@@ -2,7 +2,8 @@
  * @file user.entity.ts
  * @description TypeORM entity representing a user in the Qline system.
  * Users can register via local email/password or Google OAuth.
- * This entity also stores optional password-reset token data.
+ * This entity also stores optional password-reset token data
+ * and email-verification OTP fields used during the signup flow.
  */
 
 import {
@@ -80,6 +81,28 @@ export class User {
    */
   @Column({ type: 'timestamp', nullable: true })
   resetPasswordExpires: Date | null;
+
+  /**
+   * Bcrypt-hashed 6-digit OTP sent to the user's email during signup.
+   * Cleared once the account is verified.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  emailVerificationCode: string | null;
+
+  /**
+   * Expiry timestamp for the email-verification OTP.
+   * The code is only accepted before this date.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  emailVerificationExpires: Date | null;
+
+  /**
+   * Whether the user's email address has been verified.
+   * Local accounts must be verified before they can log in.
+   * Google OAuth accounts are considered verified by default.
+   */
+  @Column({ default: false })
+  isEmailVerified: boolean;
 
   /** Timestamp when the user record was created. */
   @CreateDateColumn()

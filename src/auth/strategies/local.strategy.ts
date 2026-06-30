@@ -29,16 +29,24 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
     /**
      * Called by Passport to validate the provided credentials.
      *
+     * Specific exceptions thrown by validateUser (e.g. unverified email) are
+     * allowed to bubble through so the client sees the real reason rather than
+     * a generic "Invalid credentials" message.
+     *
      * @param email    - The email from the request body.
      * @param password - The plain-text password from the request body.
      * @returns The authenticated {@link User} object (attached to `req.user` by Passport).
      * @throws UnauthorizedException if the email/password combination is invalid.
      */
     async validate(email: string, password: string): Promise<any> {
+        // validateUser may throw its own UnauthorizedException with a specific
+        // message (e.g. unverified email). Let those bubble through so the client
+        // receives the real reason rather than a generic "Invalid credentials".
         const user = await this.authService.validateUser(email, password);
 
         if (!user) {
-            throw new UnauthorizedException('Invalid credentials');
+            // null means wrong password or user not found.
+            throw new UnauthorizedException('Invalid email or password');
         }
 
         return user;

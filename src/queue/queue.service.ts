@@ -11,6 +11,7 @@ import {
     NotFoundException,
     ForbiddenException,
     ConflictException,
+    Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, MoreThan } from 'typeorm';
@@ -21,6 +22,7 @@ import { User } from '../entities/user.entity';
 import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { QueueGateway } from './queue.gateway';
+import { EmailService } from '../email/email.service';
 
 /** Maximum number of queues a user can create per day. */
 const MAX_QUEUES_PER_DAY = 3;
@@ -70,6 +72,22 @@ export interface QueueStatusResponse {
  */
 @Injectable()
 export class QueueService {
+    private readonly logger = new Logger(QueueService.name);
+
+    /**
+     * In-memory set tracking which (userId, queueId) pairs have already received
+     * the "3 people ahead" position alert to avoid duplicate emails.
+     * Keys are in the format `userId:queueId`.
+     */
+    private readonly positionAlertSent = new Set<string>();
+
+    /**
+     * In-memory set tracking which (userId, queueId) pairs have already received
+     * the "≤5 min remaining" wait-time alert to avoid duplicate emails.
+     * Keys are in the format `userId:queueId`.
+     */
+    private readonly waitTimeAlertSent = new Set<string>();
+
     constructor(
         @InjectRepository(Queue)
         private readonly queueRepository: Repository<Queue>,
@@ -78,6 +96,7 @@ export class QueueService {
         private readonly dataSource: DataSource,
         private readonly configService: ConfigService,
         private readonly queueGateway: QueueGateway,
+        private readonly emailService: EmailService,
     ) { }
 
     // ──────────────────────────────────────────────
@@ -333,6 +352,25 @@ export class QueueService {
               };
               // Emit event for new participant
               this.queueGateway.server.to(`queue_${queue.id}`).emit('userJoined', result.entry);
+
+              // Fire-and-forget join confirmation email.
+              // Skip guest users who have a fake placeholder email address.
+              if (this.isRealEmail(user.email)) {
+                  // Fetch the user from the database to get their actual name (since req.user from JWT only has id and email).
+                  manager.findOne(User, { where: { id: user.id } }).then((dbUser) => {
+                      const userName = dbUser?.name || 'User';
+                      this.emailService
+                          .sendQueueJoinConfirmation(
+                              user.email,
+                              userName,
+                              queue.name,
+                              newPosition,
+                              estimatedWaitTime,
+                          )
+                          .catch((err) => this.logger.error(`[Email] Join confirmation failed for ${user.email}: ${err.message}`));
+                  });
+              }
+
               return result;
         });
     }
@@ -592,6 +630,40 @@ export class QueueService {
         .andWhere('position > :servedPos', { servedPos: nextEntry.position })
         .execute();
 
+    // After shifting, check all remaining waiters for alert thresholds.
+    // Load remaining entries with their users to send position/wait-time alerts.
+    const remaining = await manager.find(QueueEntry, {
+        where: { queueId, status: QueueEntryStatus.WAITING },
+        relations: ['user'],
+        order: { position: 'ASC' },
+    });
+
+    for (const waiter of remaining) {
+        const peopleAhead = waiter.position - 1; // positions are 1-indexed after shift
+        const estimatedMinutes = peopleAhead * queue.avgServiceTime;
+        const alertKey = `${waiter.userId}:${queueId}`;
+
+        // "3 people ahead" alert
+        if (peopleAhead === 3 && !this.positionAlertSent.has(alertKey)) {
+            this.positionAlertSent.add(alertKey);
+            if (this.isRealEmail(waiter.user.email)) {
+                this.emailService
+                    .sendPositionAlert(waiter.user.email, waiter.user.name, queue.name)
+                    .catch((err) => this.logger.error(`[Email] Position alert failed for ${waiter.user.email}: ${err.message}`));
+            }
+        }
+
+        // "≤5 min remaining" wait-time alert
+        if (estimatedMinutes <= 5 && estimatedMinutes > 0 && !this.waitTimeAlertSent.has(alertKey)) {
+            this.waitTimeAlertSent.add(alertKey);
+            if (this.isRealEmail(waiter.user.email)) {
+                this.emailService
+                    .sendWaitTimeAlert(waiter.user.email, waiter.user.name, queue.name, estimatedMinutes)
+                    .catch((err) => this.logger.error(`[Email] Wait-time alert failed for ${waiter.user.email}: ${err.message}`));
+            }
+        }
+    }
+
     // Emit event for served participant
     this.queueGateway.server.to(`queue_${queueId}`).emit('nextServed', nextEntry);
     // Emit updated queue positions after shift
@@ -731,5 +803,16 @@ export class QueueService {
             .createHmac('sha256', secret)
             .update(payload)
             .digest('hex');
+    }
+
+    /**
+     * Returns `true` if the given email is a real, deliverable address.
+     * Returns `false` for guest placeholder addresses (e.g. `guest_<uuid>@qline.guest`)
+     * so we never attempt to send email to them.
+     *
+     * @param email - The email address to test.
+     */
+    private isRealEmail(email: string): boolean {
+        return !email.endsWith('@qline.guest');
     }
 }

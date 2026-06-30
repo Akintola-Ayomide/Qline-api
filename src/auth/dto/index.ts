@@ -14,3 +14,5 @@ export * from './forgot-password.dto';
 export * from './reset-password.dto';
 export * from './login.dto';
 export * from './guest-register.dto';
+export * from './verify-email.dto';
+export * from './update-profile.dto';

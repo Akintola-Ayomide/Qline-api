@@ -13,10 +13,11 @@ import {
   UseGuards,
   Req,
   Res,
+  Patch,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { RegisterDto, GuestRegisterDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
+import { RegisterDto, GuestRegisterDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, UpdateProfileDto } from './dto';
 import { LocalAuthGuard, JwtAuthGuard, GoogleAuthGuard } from './guards';
 
 /** Default frontend URL used for redirects during local development only. */
@@ -39,17 +40,19 @@ const TOKEN_COOKIE_OPTIONS = {
  *
  * Exposes the following endpoints under the `/auth` prefix:
  *
- * | Method | Route                  | Description                        | Auth Required |
- * |--------|------------------------|------------------------------------|---------------|
- * | POST   | `/auth/register`       | Create a new user account          | No            |
- * | POST   | `/auth/login`          | Login with email & password        | No            |
- * | POST   | `/auth/logout`         | Clear the auth cookie              | No            |
- * | GET    | `/auth/google`         | Redirect to Google OAuth           | No            |
- * | GET    | `/auth/google/callback` | Handle Google OAuth callback      | No            |
- * | GET    | `/auth/profile`        | Get the logged-in user's profile   | Yes (JWT)     |
- * | GET    | `/auth/me`             | Alias for `/auth/profile`          | Yes (JWT)     |
- * | POST   | `/auth/forgot-password` | Request a password reset email    | No            |
- * | POST   | `/auth/reset-password` | Reset password using a token       | No            |
+ * | Method | Route                        | Description                        | Auth Required |
+ * |--------|------------------------------|------------------------------------|---------------|
+ * | POST   | `/auth/send-verification`    | Send OTP to email (step 1 signup)  | No            |
+ * | POST   | `/auth/verify-email`         | Verify OTP & create account        | No            |
+ * | POST   | `/auth/login`                | Login with email & password        | No            |
+ * | POST   | `/auth/logout`               | Clear the auth cookie              | No            |
+ * | POST   | `/auth/guest`                | Register as a guest user           | No            |
+ * | GET    | `/auth/google`               | Redirect to Google OAuth           | No            |
+ * | GET    | `/auth/google/callback`      | Handle Google OAuth callback       | No            |
+ * | GET    | `/auth/profile`              | Get the logged-in user's profile   | Yes (JWT)     |
+ * | GET    | `/auth/me`                   | Alias for `/auth/profile`          | Yes (JWT)     |
+ * | POST   | `/auth/forgot-password`      | Request a password reset email     | No            |
+ * | POST   | `/auth/reset-password`       | Reset password using a token       | No            |
  */
 @Controller('auth')
 export class AuthController {
@@ -59,21 +62,36 @@ export class AuthController {
   ) { }
 
   /**
-   * Registers a new user with email, name, and password.
+   * Step 1 of the signup flow.
    *
-   * On success, sets an HTTP-only JWT cookie and returns the user data + access token.
+   * Generates a 6-digit OTP, saves a hashed copy to the (unverified) user record,
+   * and emails the plain-text code to the provided address.
    *
-   * @param registerDto - The validated registration data from the request body.
-   * @param res         - The Express response object (used to set the cookie).
+   * @param body - JSON body containing the `email` field.
+   * @returns A generic success message.
+   */
+  @Post('send-verification')
+  async sendVerification(@Body() body: { email: string }) {
+    return this.authService.sendVerificationCode(body.email);
+  }
+
+  /**
+   * Step 2 of the signup flow.
+   *
+   * Validates the OTP, completes the user record, and returns a JWT token
+   * so the frontend can log the user in immediately after verification.
+   *
+   * @param verifyEmailDto - Contains email, code, name, and password.
+   * @param res            - The Express response object (used to set the cookie).
    * @returns The auth response containing user data and the access token.
    */
-  @Post('register')
-  async register(@Body() registerDto: RegisterDto, @Res({ passthrough: true }) res) {
-    const result = await this.authService.register(registerDto);
-
-    // Set the JWT token as an HTTP-only cookie for secure, automatic auth on future requests.
+  @Post('verify-email')
+  async verifyEmail(
+    @Body() verifyEmailDto: VerifyEmailDto,
+    @Res({ passthrough: true }) res,
+  ) {
+    const result = await this.authService.verifyAndRegister(verifyEmailDto);
     res.cookie('token', result.accessToken, TOKEN_COOKIE_OPTIONS);
-
     return result;
   }
 
@@ -216,6 +234,19 @@ export class AuthController {
   @Get('me')
   async me(@Req() req) {
     return this.authService.getProfile(req.user.id);
+  }
+
+  /**
+   * Updates the authenticated user's profile metadata (name, avatar).
+   *
+   * @param req - The Express request (contains `req.user` set by JwtAuthGuard).
+   * @param updateProfileDto - The validated profile metadata to update.
+   * @returns The updated user profile (excluding the password hash).
+   */
+  @UseGuards(JwtAuthGuard)
+  @Patch('profile')
+  async updateProfile(@Req() req, @Body() updateProfileDto: UpdateProfileDto) {
+    return this.authService.updateProfile(req.user.id, updateProfileDto);
   }
 
   /**

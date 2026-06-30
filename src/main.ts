@@ -6,11 +6,13 @@
  */
 
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
+import { join } from 'path';
 
 /**
  * Bootstraps and starts the NestJS application.
@@ -23,8 +25,13 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
  * 5. Listens on the port defined by the `PORT` environment variable (defaults to 8000).
  */
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
+
+  // Serve static uploads
+  app.useStaticAssets(join(process.cwd(), 'public', 'uploads'), {
+    prefix: '/uploads',
+  });
 
   // Enable CORS — allows the frontend to make credentialed cross-origin requests.
   // In production, only the configured FRONTEND_URL is allowed as an origin.
