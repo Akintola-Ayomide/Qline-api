@@ -74,20 +74,6 @@ export interface QueueStatusResponse {
 export class QueueService {
     private readonly logger = new Logger(QueueService.name);
 
-    /**
-     * In-memory set tracking which (userId, queueId) pairs have already received
-     * the "3 people ahead" position alert to avoid duplicate emails.
-     * Keys are in the format `userId:queueId`.
-     */
-    private readonly positionAlertSent = new Set<string>();
-
-    /**
-     * In-memory set tracking which (userId, queueId) pairs have already received
-     * the "≤5 min remaining" wait-time alert to avoid duplicate emails.
-     * Keys are in the format `userId:queueId`.
-     */
-    private readonly waitTimeAlertSent = new Set<string>();
-
     constructor(
         @InjectRepository(Queue)
         private readonly queueRepository: Repository<Queue>,
@@ -578,7 +564,12 @@ export class QueueService {
 
             // Update the target entry's position.
             targetEntry.position = newPosition;
-            return manager.save(targetEntry);
+            const saved = await manager.save(targetEntry);
+
+            // After reordering, check if any waiter crossed an alert threshold.
+            await this.checkAndSendQueueAlerts(manager, queueId);
+
+            return saved;
         });
     }
 
@@ -630,39 +621,7 @@ export class QueueService {
         .andWhere('position > :servedPos', { servedPos: nextEntry.position })
         .execute();
 
-    // After shifting, check all remaining waiters for alert thresholds.
-    // Load remaining entries with their users to send position/wait-time alerts.
-    const remaining = await manager.find(QueueEntry, {
-        where: { queueId, status: QueueEntryStatus.WAITING },
-        relations: ['user'],
-        order: { position: 'ASC' },
-    });
-
-    for (const waiter of remaining) {
-        const peopleAhead = waiter.position - 1; // positions are 1-indexed after shift
-        const estimatedMinutes = peopleAhead * queue.avgServiceTime;
-        const alertKey = `${waiter.userId}:${queueId}`;
-
-        // "3 people ahead" alert
-        if (peopleAhead === 3 && !this.positionAlertSent.has(alertKey)) {
-            this.positionAlertSent.add(alertKey);
-            if (this.isRealEmail(waiter.user.email)) {
-                this.emailService
-                    .sendPositionAlert(waiter.user.email, waiter.user.name, queue.name)
-                    .catch((err) => this.logger.error(`[Email] Position alert failed for ${waiter.user.email}: ${err.message}`));
-            }
-        }
-
-        // "≤5 min remaining" wait-time alert
-        if (estimatedMinutes <= 5 && estimatedMinutes > 0 && !this.waitTimeAlertSent.has(alertKey)) {
-            this.waitTimeAlertSent.add(alertKey);
-            if (this.isRealEmail(waiter.user.email)) {
-                this.emailService
-                    .sendWaitTimeAlert(waiter.user.email, waiter.user.name, queue.name, estimatedMinutes)
-                    .catch((err) => this.logger.error(`[Email] Wait-time alert failed for ${waiter.user.email}: ${err.message}`));
-            }
-        }
-    }
+    await this.checkAndSendQueueAlerts(manager, queueId, queue);
 
     // Emit event for served participant
     this.queueGateway.server.to(`queue_${queueId}`).emit('nextServed', nextEntry);
@@ -726,6 +685,9 @@ export class QueueService {
             entry.status = QueueEntryStatus.CANCELLED;
             await manager.save(entry);
 
+            // Check and send position/wait-time alerts after the queue shifted.
+            await this.checkAndSendQueueAlerts(manager, queueId);
+
             // Notify all clients in the queue room.
             this.queueGateway.server
                 .to(`queue_${queueId}`)
@@ -770,6 +732,82 @@ export class QueueService {
     // ──────────────────────────────────────────────
     // Private Helpers
     // ──────────────────────────────────────────────
+
+    /**
+     * Checks all WAITING participants in a queue and sends position/wait-time
+     * alert emails where thresholds are crossed.
+     *
+     * Flags are persisted on the {@link QueueEntry} entity so alerts survive
+     * server restarts and are never sent twice — even if the method is called
+     * multiple times for the same participant.
+     *
+     * @param manager  - The active EntityManager (may be inside a transaction).
+     * @param queueId  - The queue whose participants should be checked.
+     * @param queue    - Optional pre-loaded Queue entity (saves a DB round-trip).
+     */
+    private async checkAndSendQueueAlerts(
+        manager: import('typeorm').EntityManager,
+        queueId: number,
+        queue?: Queue,
+    ): Promise<void> {
+        // Load queue if not provided.
+        if (!queue) {
+            queue = await manager.findOne(Queue, { where: { id: queueId } }) ?? undefined;
+            if (!queue) return;
+        }
+
+        // Load all waiting participants with their user relations.
+        const waiters = await manager.find(QueueEntry, {
+            where: { queueId, status: QueueEntryStatus.WAITING },
+            relations: ['user'],
+            order: { position: 'ASC' },
+        });
+
+        for (const waiter of waiters) {
+            // Skip guest accounts.
+            if (!waiter.user || !this.isRealEmail(waiter.user.email)) continue;
+
+            const peopleAhead = waiter.position - 1; // 1-indexed positions
+            const estimatedMinutes = peopleAhead * queue.avgServiceTime;
+            let dirty = false;
+
+            // "≤3 people ahead" position alert (changed from === 3 to <= 3 to avoid skips).
+            if (peopleAhead <= 3 && !waiter.positionAlertSent) {
+                waiter.positionAlertSent = true;
+                dirty = true;
+                this.emailService
+                    .sendPositionAlert(waiter.user.email, waiter.user.name, queue.name)
+                    .catch((err) =>
+                        this.logger.error(
+                            `[Email] Position alert failed for ${waiter.user.email}: ${err.message}`,
+                        ),
+                    );
+            }
+
+            // "≤5 min remaining" wait-time alert.
+            if (estimatedMinutes <= 5 && estimatedMinutes > 0 && !waiter.waitTimeAlertSent) {
+                waiter.waitTimeAlertSent = true;
+                dirty = true;
+                this.emailService
+                    .sendWaitTimeAlert(
+                        waiter.user.email,
+                        waiter.user.name,
+                        queue.name,
+                        estimatedMinutes,
+                    )
+                    .catch((err) =>
+                        this.logger.error(
+                            `[Email] Wait-time alert failed for ${waiter.user.email}: ${err.message}`,
+                        ),
+                    );
+            }
+
+            // Persist the flag updates only when something actually changed.
+            if (dirty) {
+                await manager.save(waiter);
+            }
+        }
+    }
 
     /**
      * Generates a unique, HMAC-signed QR code token for a queue entry.

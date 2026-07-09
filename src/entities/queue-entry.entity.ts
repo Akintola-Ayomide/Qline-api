@@ -99,6 +99,14 @@ export class QueueEntry {
     })
     status: QueueEntryStatus;
 
+    /** Flag indicating whether the "3 people ahead" position alert email was sent. */
+    @Column({ type: 'boolean', default: false })
+    positionAlertSent: boolean;
+
+    /** Flag indicating whether the "≤5 min remaining" wait-time alert email was sent. */
+    @Column({ type: 'boolean', default: false })
+    waitTimeAlertSent: boolean;
+
     /** Timestamp when the user joined the queue. */
     @Column({ type: 'timestamp', nullable: true })
     joinedAt: Date;

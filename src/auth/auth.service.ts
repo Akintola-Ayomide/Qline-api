@@ -132,18 +132,15 @@ export class AuthService {
             await this.userRepository.save(user);
         }
 
-        // Send the OTP email. If this fails we still return success so the
-        // DB record is preserved and the user can resend. The error is logged
-        // so it surfaces in the server logs without crashing the request.
-        try {
-            await this.emailService.sendEmailVerificationCode(email, code);
-        } catch (err) {
+        // Send the OTP email in the background to avoid blocking the HTTP response.
+        // If this fails we still return success so the DB record is preserved and the
+        // user can resend. The error is logged asynchronously.
+        this.emailService.sendEmailVerificationCode(email, code).catch((err) => {
             this.logger.error(
-                `Failed to send verification email to ${email}: ${(err as Error).message}`,
-                (err as Error).stack,
+                `Failed to send verification email to ${email}: ${err.message}`,
+                err.stack,
             );
-            // Do NOT rethrow — the user record is saved, let them retry via resend.
-        }
+        });
 
         return { message: 'Verification code sent. Please check your inbox.' };
     }
@@ -453,16 +450,13 @@ export class AuthService {
 
         await this.userRepository.save(user);
 
-        // Send the un-hashed token to the user via email.
-        try {
-            await this.emailService.sendPasswordResetEmail(email, resetToken);
-        } catch (err) {
+        // Send the un-hashed token to the user via email in the background to avoid blocking.
+        this.emailService.sendPasswordResetEmail(email, resetToken).catch((err) => {
             this.logger.error(
-                `Failed to send password reset email to ${email}: ${(err as Error).message}`,
-                (err as Error).stack,
+                `Failed to send password reset email to ${email}: ${err.message}`,
+                err.stack,
             );
-            // Do NOT rethrow — token is saved in DB; user can retry the forgot-password request.
-        }
+        });
 
         return {
             message:
