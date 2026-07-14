@@ -19,7 +19,7 @@ import {
     HttpStatus,
 } from '@nestjs/common';
 import { QueueService } from './queue.service';
-import { CreateQueueDto, JoinQueueDto, PrioritizeUserDto, UpdateQueueStatusDto, VerifyQrDto } from './dto/queue.dto';
+import { CreateQueueDto, JoinQueueDto, PrioritizeUserDto, UpdateQueueDto, UpdateQueueStatusDto, VerifyQrDto } from './dto/queue.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 /**
@@ -177,6 +177,24 @@ export class QueueController {
         @Body() dto: UpdateQueueStatusDto,
     ) {
         return this.queueService.updateQueueStatus(req.user.id, queueId, dto.status);
+    }
+
+    /**
+     * Updates a queue's name, description, image, or other metadata (owner only).
+     *
+     * @param req     - The Express request (contains `req.user` from JWT).
+     * @param queueId - The queue ID parsed from the URL parameter.
+     * @param dto     - The fields to update (all optional).
+     * @returns The updated queue entity.
+     */
+    @Patch(':id')
+    @UseGuards(JwtAuthGuard)
+    async updateQueue(
+        @Req() req,
+        @Param('id', ParseIntPipe) queueId: number,
+        @Body() dto: UpdateQueueDto,
+    ) {
+        return this.queueService.updateQueue(req.user.id, queueId, dto);
     }
 
     @Post(':id/leave')

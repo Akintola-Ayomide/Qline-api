@@ -17,7 +17,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, MoreThan } from 'typeorm';
 import { Queue, QueueStatus } from '../entities/queue.entity';
 import { QueueEntry, QueueEntryStatus } from '../entities/queue-entry.entity';
-import { CreateQueueDto, JoinQueueDto, PrioritizeUserDto } from './dto/queue.dto';
+import { CreateQueueDto, JoinQueueDto, PrioritizeUserDto, UpdateQueueDto } from './dto/queue.dto';
 import { User } from '../entities/user.entity';
 import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
@@ -219,6 +219,43 @@ export class QueueService {
         }
 
         return queue;
+    }
+
+    /**
+     * Updates a queue's details (owner only).
+     *
+     * Only the queue owner can update the queue. Broadcasts a `queueUpdated`
+     * WebSocket event so connected clients can refresh queue metadata.
+     *
+     * @param userId  - The ID of the user requesting the update.
+     * @param queueId - The ID of the queue to update.
+     * @param dto     - An object with optional fields to update.
+     * @returns The updated {@link Queue} entity.
+     * @throws NotFoundException  if the queue does not exist.
+     * @throws ForbiddenException if the caller is not the queue owner.
+     */
+    async updateQueue(
+        userId: number,
+        queueId: number,
+        dto: UpdateQueueDto,
+    ): Promise<Queue> {
+        const queue = await this.queueRepository.findOne({ where: { id: queueId } });
+
+        if (!queue) {
+            throw new NotFoundException('Queue not found');
+        }
+        if (queue.ownerId !== userId) {
+            throw new ForbiddenException('Only the queue owner can update this queue');
+        }
+
+        Object.assign(queue, dto);
+        const saved = await this.queueRepository.save(queue);
+
+        this.queueGateway.server
+            .to(`queue_${queueId}`)
+            .emit('queueUpdated', { queueId });
+
+        return saved;
     }
 
     // ──────────────────────────────────────────────

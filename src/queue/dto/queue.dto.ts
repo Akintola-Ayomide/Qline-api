@@ -31,6 +31,11 @@ export class CreateQueueDto {
     @IsOptional()
     description?: string;
 
+    /** Optional image URL (e.g. uploaded via /api/upload/image). */
+    @IsString()
+    @IsOptional()
+    image?: string;
+
     /**
      * Maximum number of participants allowed in the queue.
      * Must be at least 1. Defaults to 50 if not specified.
@@ -92,6 +97,40 @@ export class PrioritizeUserDto {
     /** The new position to assign to the user. */
     @IsInt()
     newPosition: number;
+}
+
+/**
+ * DTO for the `PATCH /queues/:id` endpoint — updates a queue's details.
+ *
+ * All fields are optional so callers can send only the fields they want to change.
+ */
+export class UpdateQueueDto {
+    @IsString()
+    @IsOptional()
+    name?: string;
+
+    @IsString()
+    @IsOptional()
+    description?: string;
+
+    @IsString()
+    @IsOptional()
+    image?: string;
+
+    @IsInt()
+    @Min(1)
+    @Max(50)
+    @IsOptional()
+    maxParticipants?: number;
+
+    @IsInt()
+    @Min(1)
+    @IsOptional()
+    avgServiceTime?: number;
+
+    @IsArray()
+    @IsOptional()
+    customFields?: Record<string, any>[];
 }
 
 /**

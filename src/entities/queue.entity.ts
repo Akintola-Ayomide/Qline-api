@@ -51,6 +51,10 @@ export class Queue {
     @Column({ type: 'text', nullable: true })
     description: string;
 
+    /** Optional image URL for the queue (e.g. business logo or location photo). */
+    @Column({ nullable: true })
+    image: string;
+
     /**
      * Maximum number of participants allowed in the queue at one time.
      * Defaults to 50 if not specified during queue creation.
